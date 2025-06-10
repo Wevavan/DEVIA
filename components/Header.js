@@ -20,12 +20,15 @@ import {
   ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 
+import ConsultationModal from './ConsultationModal'; // Import de la nouvelle modal
 
 export default function PremiumHeaderHero() {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const [isConsultationModalOpen, setIsConsultationModalOpen] = useState(false);
+  const [modalSource, setModalSource] = useState('header');
 
   const handleScroll = useCallback(() => {
     const scrolled = window.scrollY > 20;
@@ -75,10 +78,25 @@ export default function PremiumHeaderHero() {
     };
   }, [isMenuOpen]);
 
-    const handleCTAClick = (ctaType) => {
+  const handleCTAClick = (ctaType) => {
     console.log('CTA clicked:', ctaType);
-    // router.push('/consultation');
-    };
+    
+    // Analytics
+    fetch('/api/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        type: 'cta_click', 
+        ctaType: ctaType,
+        page: 'home',
+        section: 'header'
+      })
+    });
+
+    // Ouvrir la modal de consultation
+    setModalSource(ctaType);
+    setIsConsultationModalOpen(true);
+  };
 
   const navigationItems = [
     { name: 'Accueil', href: '#', active: true },
@@ -114,7 +132,7 @@ export default function PremiumHeaderHero() {
                   <span className="hidden sm:inline font-medium">Disponible maintenant</span>
                 </div>
                 <a
-                  href="tel:+33612345678"
+                  href="tel:+33662704580"
                   className={`hidden md:flex items-center space-x-2 text-sm font-medium transition-colors ${
                     isScrolled 
                       ? 'text-gray-600 hover:text-blue-600' 
@@ -346,7 +364,7 @@ export default function PremiumHeaderHero() {
                 {/* Mobile Contact */}
                 <div className="pt-6 space-y-4">
                   <a
-                    href="tel:+33612345678"
+                    href="tel:+33662704580"
                     className={`flex items-center space-x-3 text-gray-600 hover:text-blue-600 transition-colors p-3 rounded-lg hover:bg-blue-50 ${
                       isMenuOpen ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'
                     }`}
@@ -358,7 +376,7 @@ export default function PremiumHeaderHero() {
                     <span className="font-medium">+33 6 62 70 45 80</span>
                   </a>
                   <a
-                    href="mailto:contact@votresite.fr"
+                    href="mailto:contact@devia-pro.fr"
                     className={`flex items-center space-x-3 text-gray-600 hover:text-blue-600 transition-colors p-3 rounded-lg hover:bg-blue-50 ${
                       isMenuOpen ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'
                     }`}
@@ -367,7 +385,7 @@ export default function PremiumHeaderHero() {
                     }}
                   >
                     <EnvelopeIcon className="w-5 h-5" />
-                    <span className="font-medium">contact@votresite.fr</span>
+                    <span className="font-medium">contact@devia-pro.fr</span>
                   </a>
                 </div>
               </div>
@@ -384,6 +402,14 @@ export default function PremiumHeaderHero() {
           aria-hidden="true"
         />
       )}
+
+      {/* Modal de Consultation */}
+      <ConsultationModal 
+        isOpen={isConsultationModalOpen}
+        onClose={() => setIsConsultationModalOpen(false)}
+        source="website"
+        sourceSection={modalSource}
+      />
     </>
   );
 }

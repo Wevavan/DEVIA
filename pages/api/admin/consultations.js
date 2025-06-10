@@ -1,386 +1,229 @@
 // pages/api/admin/consultations.js
 import dbConnect from '../../../lib/mongodb';
 import Consultation from '../../../models/Consultation';
+import jwt from 'jsonwebtoken';
+
+// Middleware d'authentification
+function authenticateToken(req) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return null;
+  }
+
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET);
+  } catch (error) {
+    return null;
+  }
+}
 
 export default async function handler(req, res) {
-  // Vérification de l'authentification admin
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token || token !== process.env.ADMIN_TOKEN) {
-    return res.status(401).json({ 
-      success: false, 
-      message: 'Accès non autorisé' 
-    });
+  // Vérification de l'authentification
+  const user = authenticateToken(req);
+  if (!user) {
+    return res.status(401).json({ message: 'Token manquant ou invalide' });
   }
 
   await dbConnect();
 
-  switch (req.method) {
-    case 'GET':
-      return getConsultations(req, res);
-    case 'PUT':
-      return updateConsultation(req, res);
-    case 'DELETE':
-      return deleteConsultation(req, res);
-    default:
-      return res.status(405).json({ 
+  if (req.method === 'GET') {
+    try {
+      const { export: exportType, ...queryParams } = req.query;
+
+      // Export CSV
+      if (exportType === 'csv') {
+        const consultations = await Consultation.find()
+          .sort({ createdAt: -1 })
+          .lean();
+
+        const csvHeader = [
+          'Date de création',
+          'Nom',
+          'Prénom', 
+          'Email',
+          'Téléphone',
+          'Entreprise',
+          'Type de projet',
+          'Budget',
+          'Délai',
+          'Date consultation',
+          'Heure',
+          'Type consultation',
+          'Score qualification',
+          'Probabilité conversion',
+          'Priorité',
+          'Statut',
+          'Source'
+        ].join(',');
+
+        const csvRows = consultations.map(consultation => [
+          new Date(consultation.createdAt).toLocaleDateString('fr-FR'),
+          `"${consultation.lastName}"`,
+          `"${consultation.firstName}"`,
+          consultation.email,
+          consultation.phone,
+          `"${consultation.company || ''}"`,
+          consultation.projectType,
+          consultation.budget,
+          consultation.timeline,
+          new Date(consultation.consultationDate).toLocaleDateString('fr-FR'),
+          consultation.consultationTime,
+          consultation.consultationType,
+          consultation.qualificationScore,
+          consultation.conversionProbability,
+          consultation.priority,
+          consultation.status,
+          `${consultation.source}-${consultation.sourceSection}`
+        ].join(','));
+
+        const csvContent = [csvHeader, ...csvRows].join('\n');
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="consultations-${new Date().toISOString().split('T')[0]}.csv"`);
+        return res.status(200).send(csvContent);
+      }
+
+      // Récupération normale des données
+      const { 
+        page = 1, 
+        limit = 20, 
+        status, 
+        priority, 
+        search,
+        dateFrom,
+        dateTo 
+      } = queryParams;
+
+      const query = {};
+      
+      // Filtres
+      if (status && status !== 'all') query.status = status;
+      if (priority && priority !== 'all') query.priority = priority;
+      
+      // Filtre par date
+      if (dateFrom || dateTo) {
+        query.createdAt = {};
+        if (dateFrom) query.createdAt.$gte = new Date(dateFrom);
+        if (dateTo) query.createdAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
+      }
+      
+      // Recherche
+      if (search) {
+        query.$or = [
+          { firstName: { $regex: search, $options: 'i' } },
+          { lastName: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { company: { $regex: search, $options: 'i' } },
+          { projectName: { $regex: search, $options: 'i' } }
+        ];
+      }
+
+      const consultations = await Consultation.find(query)
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean();
+
+      const total = await Consultation.countDocuments(query);
+      const stats = await Consultation.getStats();
+
+      res.status(200).json({
+        success: true,
+        data: {
+          consultations,
+          stats,
+          pagination: {
+            current: parseInt(page),
+            pages: Math.ceil(total / limit),
+            total
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Erreur récupération consultations admin:', error);
+      res.status(500).json({ 
         success: false, 
-        message: 'Méthode non autorisée' 
+        message: 'Erreur lors de la récupération des consultations' 
       });
-  }
-}
-
-// GET - Récupérer les consultations avec filtres
-async function getConsultations(req, res) {
-  try {
-    const {
-      page = 1,
-      limit = 10,
-      status,
-      priority,
-      projectType,
-      budget,
-      source,
-      search,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-      dateFrom,
-      dateTo
-    } = req.query;
-
-    // Construction des filtres
-    const filters = {};
-    
-    if (status && status !== 'all') filters.status = status;
-    if (priority && priority !== 'all') filters.priority = priority;
-    if (projectType && projectType !== 'all') filters.projectType = projectType;
-    if (budget && budget !== 'all') filters.budget = budget;
-    if (source && source !== 'all') filters.source = source;
-    
-    // Filtre de recherche
-    if (search) {
-      filters.$or = [
-        { firstName: { $regex: search, $options: 'i' } },
-        { lastName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { company: { $regex: search, $options: 'i' } },
-        { projectName: { $regex: search, $options: 'i' } },
-        { projectDescription: { $regex: search, $options: 'i' } }
-      ];
-    }
-    
-    // Filtre de dates
-    if (dateFrom || dateTo) {
-      filters.createdAt = {};
-      if (dateFrom) filters.createdAt.$gte = new Date(dateFrom);
-      if (dateTo) filters.createdAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
     }
 
-    // Options de pagination et tri
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const sortOptions = {};
-    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+  } else if (req.method === 'PUT') {
+    try {
+      const { id } = req.query;
+      const updateData = req.body;
 
-    // Requête avec populate et projection
-    const consultations = await Consultation
-      .find(filters)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean(); // Pour de meilleures performances
+      if (!id) {
+        return res.status(400).json({ message: 'ID de consultation requis' });
+      }
 
-    // Compter le total
-    const total = await Consultation.countDocuments(filters);
-
-    // Statistiques rapides
-    const stats = await Consultation.aggregate([
-      { $match: filters },
-      {
-        $group: {
-          _id: null,
-          totalConsultations: { $sum: 1 },
-          avgQualificationScore: { $avg: '$qualificationScore' },
-          avgConversionProbability: { $avg: '$conversionProbability' },
-          statusCounts: {
-            $push: '$status'
-          },
-          priorityCounts: {
-            $push: '$priority'
-          },
-          totalEstimatedValue: { $sum: '$estimatedValue' }
+      // Ajouter la date de mise à jour appropriée selon le statut
+      if (updateData.status) {
+        updateData.updatedAt = new Date();
+        
+        if (updateData.status === 'contacted' && !updateData.contactedAt) {
+          updateData.contactedAt = new Date();
         }
-      },
-      {
-        $project: {
-          totalConsultations: 1,
-          avgQualificationScore: { $round: ['$avgQualificationScore', 1] },
-          avgConversionProbability: { $round: ['$avgConversionProbability', 1] },
-          totalEstimatedValue: 1,
-          statusBreakdown: {
-            pending: {
-              $size: {
-                $filter: {
-                  input: '$statusCounts',
-                  cond: { $eq: ['$$this', 'pending'] }
-                }
-              }
-            },
-            reviewed: {
-              $size: {
-                $filter: {
-                  input: '$statusCounts',
-                  cond: { $eq: ['$$this', 'reviewed'] }
-                }
-              }
-            },
-            contacted: {
-              $size: {
-                $filter: {
-                  input: '$statusCounts',
-                  cond: { $eq: ['$$this', 'contacted'] }
-                }
-              }
-            },
-            scheduled: {
-              $size: {
-                $filter: {
-                  input: '$statusCounts',
-                  cond: { $eq: ['$$this', 'scheduled'] }
-                }
-              }
-            },
-            completed: {
-              $size: {
-                $filter: {
-                  input: '$statusCounts',
-                  cond: { $eq: ['$$this', 'completed'] }
-                }
-              }
-            },
-            cancelled: {
-              $size: {
-                $filter: {
-                  input: '$statusCounts',
-                  cond: { $eq: ['$$this', 'cancelled'] }
-                }
-              }
-            }
-          },
-          priorityBreakdown: {
-            low: {
-              $size: {
-                $filter: {
-                  input: '$priorityCounts',
-                  cond: { $eq: ['$$this', 'low'] }
-                }
-              }
-            },
-            medium: {
-              $size: {
-                $filter: {
-                  input: '$priorityCounts',
-                  cond: { $eq: ['$$this', 'medium'] }
-                }
-              }
-            },
-            high: {
-              $size: {
-                $filter: {
-                  input: '$priorityCounts',
-                  cond: { $eq: ['$$this', 'high'] }
-                }
-              }
-            },
-            urgent: {
-              $size: {
-                $filter: {
-                  input: '$priorityCounts',
-                  cond: { $eq: ['$$this', 'urgent'] }
-                }
-              }
-            }
-          }
+        
+        if (updateData.status === 'scheduled' && !updateData.scheduledAt) {
+          updateData.scheduledAt = new Date();
         }
       }
-    ]);
 
-    // Réponse avec métadonnées
-    res.status(200).json({
-      success: true,
-      data: {
-        consultations,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / parseInt(limit)),
-          totalItems: total,
-          itemsPerPage: parseInt(limit),
-          hasNextPage: skip + parseInt(limit) < total,
-          hasPrevPage: parseInt(page) > 1
-        },
-        stats: stats[0] || {
-          totalConsultations: 0,
-          avgQualificationScore: 0,
-          avgConversionProbability: 0,
-          totalEstimatedValue: 0,
-          statusBreakdown: {},
-          priorityBreakdown: {}
-        },
-        filters: {
-          applied: filters,
-          available: {
-            statuses: ['pending', 'reviewed', 'contacted', 'scheduled', 'completed', 'cancelled'],
-            priorities: ['low', 'medium', 'high', 'urgent'],
-            projectTypes: [
-              'Site Web E-commerce',
-              'Application Web',
-              'Application Mobile',
-              'Dashboard Analytics',
-              'Intelligence Artificielle',
-              'API & Backend',
-              'Consultation SEO',
-              'Maintenance & Support',
-              'Autre'
-            ],
-            budgets: [
-              'Moins de 5k€',
-              '5k€ - 15k€',
-              '15k€ - 30k€',
-              '30k€ - 50k€',
-              '50k€ - 100k€',
-              'Plus de 100k€',
-              'À discuter'
-            ],
-            sources: ['Google', 'Facebook', 'LinkedIn', 'Instagram', 'TikTok', 'Référencement', 'Direct', 'Autre']
-          }
-        }
+      const consultation = await Consultation.findByIdAndUpdate(
+        id,
+        updateData,
+        { new: true, runValidators: true }
+      );
+
+      if (!consultation) {
+        return res.status(404).json({ message: 'Consultation non trouvée' });
       }
-    });
 
-  } catch (error) {
-    console.error('Erreur récupération consultations:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur serveur lors de la récupération des consultations'
-    });
-  }
-}
+      res.status(200).json({
+        success: true,
+        data: consultation
+      });
 
-// PUT - Mettre à jour une consultation
-async function updateConsultation(req, res) {
-  try {
-    const { id } = req.query;
-    const updates = req.body;
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de consultation requis'
+    } catch (error) {
+      console.error('Erreur mise à jour consultation:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Erreur lors de la mise à jour de la consultation' 
       });
     }
 
-    // Champs autorisés à la modification
-    const allowedUpdates = [
-      'status',
-      'priority',
-      'assignedTo',
-      'scheduledDate',
-      'consultationNotes',
-      'followUpDate',
-      'estimatedValue',
-      'conversionProbability'
-    ];
+  } else if (req.method === 'DELETE') {
+    try {
+      const { id } = req.query;
 
-    const updateData = {};
-    Object.keys(updates).forEach(key => {
-      if (allowedUpdates.includes(key) && updates[key] !== undefined) {
-        updateData[key] = updates[key];
+      if (!id) {
+        return res.status(400).json({ message: 'ID de consultation requis' });
       }
-    });
 
-    if (Object.keys(updateData).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Aucune donnée valide à mettre à jour'
-      });
-    }
+      const consultation = await Consultation.findByIdAndDelete(id);
 
-    // Mise à jour avec validation
-    const consultation = await Consultation.findByIdAndUpdate(
-      id,
-      { 
-        ...updateData,
-        updatedAt: new Date(),
-        ...(updateData.status === 'contacted' && { lastContactedAt: new Date() })
-      },
-      { 
-        new: true, 
-        runValidators: true 
+      if (!consultation) {
+        return res.status(404).json({ message: 'Consultation non trouvée' });
       }
-    );
 
-    if (!consultation) {
-      return res.status(404).json({
-        success: false,
-        message: 'Consultation non trouvée'
+      res.status(200).json({
+        success: true,
+        message: 'Consultation supprimée avec succès'
+      });
+
+    } catch (error) {
+      console.error('Erreur suppression consultation:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Erreur lors de la suppression de la consultation' 
       });
     }
 
-    res.status(200).json({
-      success: true,
-      message: 'Consultation mise à jour avec succès',
-      data: consultation
-    });
-
-  } catch (error) {
-    console.error('Erreur mise à jour consultation:', error);
-    
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
-      return res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: errors
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur serveur lors de la mise à jour'
-    });
-  }
-}
-
-// DELETE - Supprimer une consultation
-async function deleteConsultation(req, res) {
-  try {
-    const { id } = req.query;
-
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: 'ID de consultation requis'
-      });
-    }
-
-    const consultation = await Consultation.findByIdAndDelete(id);
-
-    if (!consultation) {
-      return res.status(404).json({
-        success: false,
-        message: 'Consultation non trouvée'
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Consultation supprimée avec succès',
-      data: { deletedId: id }
-    });
-
-  } catch (error) {
-    console.error('Erreur suppression consultation:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur serveur lors de la suppression'
-    });
+  } else {
+    res.setHeader('Allow', ['GET', 'PUT', 'DELETE']);
+    res.status(405).json({ message: 'Méthode non autorisée' });
   }
 }
