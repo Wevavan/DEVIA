@@ -1,5 +1,5 @@
 {
-  "name": "dev-wev-portfolio",
+  "name": "dev-web-ai-portfolio",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,15 +9,22 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "next": "15.3.3"
+    "@heroicons/react": "^2.0.18",
+    "bcryptjs": "^2.4.3",
+    "framer-motion": "^10.16.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^7.6.0",
+    "next": "14.0.0",
+    "nodemailer": "^6.10.1",
+    "react": "^18",
+    "react-dom": "^18"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
-    "eslint": "^9",
-    "eslint-config-next": "15.3.3",
-    "@eslint/eslintrc": "^3"
+    "@types/nodemailer": "^6.4.17",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^8",
+    "eslint-config-next": "14.0.0",
+    "postcss": "^8.5.4",
+    "tailwindcss": "^3.4.17"
   }
 }
