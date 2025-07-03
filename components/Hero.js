@@ -9,9 +9,13 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline';
 
+import ConsultationModal from './ConsultationModal'; // Import de la modal de consultation
+
 export default function PremiumHero() {
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const [isConsultationModalOpen, setIsConsultationModalOpen] = useState(false);
+  const [modalSource, setModalSource] = useState('hero');
 
   useEffect(() => {
     setIsVisible(true);
@@ -19,17 +23,37 @@ export default function PremiumHero() {
 
   const handleCTAClick = (ctaType) => {
     console.log('CTA clicked:', ctaType);
-    // Analytics here
+    
+    // Analytics
+    fetch('/api/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        type: 'cta_click', 
+        ctaType: ctaType,
+        page: 'home',
+        section: 'hero'
+      })
+    });
+
+    // Ouvrir la modal de consultation
+    setModalSource(ctaType);
+    setIsConsultationModalOpen(true);
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Escape' && isVideoModalOpen) {
-      setIsVideoModalOpen(false);
+    if (e.key === 'Escape') {
+      if (isVideoModalOpen) {
+        setIsVideoModalOpen(false);
+      }
+      if (isConsultationModalOpen) {
+        setIsConsultationModalOpen(false);
+      }
     }
   };
 
   useEffect(() => {
-    if (isVideoModalOpen) {
+    if (isVideoModalOpen || isConsultationModalOpen) {
       document.addEventListener('keydown', handleKeyDown);
       document.body.style.overflow = 'hidden';
     } else {
@@ -40,7 +64,7 @@ export default function PremiumHero() {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = 'unset';
     };
-  }, [isVideoModalOpen]);
+  }, [isVideoModalOpen, isConsultationModalOpen]);
 
   const stats = [
     { number: '50+', label: 'Projets Réalisés', icon: RocketLaunchIcon },
@@ -326,6 +350,14 @@ export default function PremiumHero() {
           </div>
         </div>
       )}
+
+      {/* Modal de Consultation */}
+      <ConsultationModal 
+        isOpen={isConsultationModalOpen}
+        onClose={() => setIsConsultationModalOpen(false)}
+        source="website"
+        sourceSection={modalSource}
+      />
 
       <style jsx>{`
         @keyframes float {

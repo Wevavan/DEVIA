@@ -83,10 +83,10 @@ export default function Footer() {
   ];
 
   const quickLinks = [
+    { name: "Services", href: "#services" },
+    { name: "Projets", href: "#projects" },
     { name: "À Propos", href: "#about" },
-    { name: "Portfolio", href: "#projects" },
-    { name: "Blog Tech", href: "#blog" },
-    { name: "Témoignages", href: "#testimonials" },
+    { name: "Contact", href: "#contact" },
     { name: "FAQ", href: "#faq" },
     { name: "Conditions", href: "#terms" }
   ];
@@ -163,6 +163,7 @@ export default function Footer() {
       ref={footerRef}
       className="relative overflow-hidden"
       onMouseMove={handleMouseMove}
+      id="contact"
     >
       {/* Background Ultra Premium */}
       <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
@@ -282,7 +283,7 @@ export default function Footer() {
               visibleElements.includes(3) ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
             }`}
           >
-            <h4 className="text-2xl font-bold text-white mb-8">Contact VIP</h4>
+            <h4 className="text-2xl font-bold text-white mb-8">CONTACT</h4>
             <div className="space-y-4">
               {contactInfo.map((contact, index) => (
                 <a

@@ -103,7 +103,7 @@ export default function PremiumHeaderHero() {
     { name: 'Services', href: '#services' },
     { name: 'Projets', href: '#projects' },
     { name: 'À propos', href: '#about' },
-    { name: 'Blog', href: '#blog' }
+    { name: 'Contact', href: '#contact'}
   ];
 
   return (

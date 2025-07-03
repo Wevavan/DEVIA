@@ -117,7 +117,7 @@ export default function About() {
   }, []);
 
   return (
-    <section ref={sectionRef} className="relative py-32 overflow-hidden">
+    <section ref={sectionRef} className="relative py-32 overflow-hidden" id="about">
       {/* Background Premium */}
       <div className="absolute inset-0 bg-gradient-to-br from-white via-blue-50/30 to-purple-50/20">
         {/* Floating Elements */}
